@@ -1,9 +1,32 @@
--- [[ SCRIPT TỐI ƯU CHO DELTA EXECUTOR - CHỈNH TỐC ĐỘ CHẠY ]]
+-- [[ SCRIPT KHÓA TỐC ĐỘ SIMULATOR - CHẶN GAME TỰ RESET ]]
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- Hàm xử lý thiết lập UI và logic tốc độ cho nhân vật
+-- Biến lưu trữ tốc độ bạn muốn ép buộc
+local forcedSpeed = nil 
+
+-- ====================================================
+-- BẢO VỆ CHỈ SỐ: CHẶN GAME GHI ĐÈ WALKSPEED CỦA BẠN
+-- ====================================================
+local mt = getrawmetatable(game)
+local oldNewIndex = mt.__newindex
+setreadonly(mt, false)
+
+mt.__newindex = newcclosure(function(t, k, v)
+    -- Nếu hệ thống game cố tình thay đổi WalkSpeed của bạn
+    if forcedSpeed and t:IsA("Humanoid") and k == "WalkSpeed" then
+        -- Ép buộc game phải sử dụng số tốc độ bạn đã nhập trong UI
+        return oldNewIndex(t, k, forcedSpeed)
+    end
+    return oldNewIndex(t, k, v)
+end)
+
+setreadonly(mt, true)
+
+-- ====================================================
+-- PHẦN TẠO GIAO DIỆN (UI) TRÊN ĐIỆN THOẠI
+-- ====================================================
 local function setupSpeedControl(character)
 	local humanoid = character:WaitForChild("Humanoid", 10)
 	if not humanoid then return end
@@ -11,62 +34,62 @@ local function setupSpeedControl(character)
 	local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
 	if not PlayerGui then return end
 
-	-- Xóa UI cũ nếu có để tránh trùng lặp
 	local oldSpeedGui = PlayerGui:FindFirstChild("SpeedControlGui")
 	if oldSpeedGui then oldSpeedGui:Destroy() end
 
-	-- Tạo giao diện mới
 	local screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "SpeedControlGui"
 	screenGui.ResetOnSpawn = false
 	screenGui.Parent = PlayerGui
 
-	-- Tạo ô nhập số tốc độ
 	local speedBox = Instance.new("TextBox")
 	speedBox.Name = "SpeedBox"
-	speedBox.Size = UDim2.new(0, 160, 0, 40)
-	speedBox.Position = UDim2.new(0, 20, 0.75, 0) -- Góc dưới bên trái điện thoại
-	speedBox.PlaceholderText = "Tốc độ (Gốc: 16)..."
-	speedBox.Text = ""
+	speedBox.Size = UDim2.new(0, 150, 0, 40)
+	speedBox.Position = UDim2.new(0, 20, 0.7, 0)
+	speedBox.PlaceholderText = "Nhập tốc độ ép buộc..."
+	speedBox.Text = forcedSpeed and tostring(forcedSpeed) or ""
 	speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 	speedBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-	speedBox.BorderColor3 = Color3.fromRGB(0, 255, 150) -- Viền xanh lá neon
-	speedBox.TextSize = 16
+	speedBox.BorderColor3 = Color3.fromRGB(255, 150, 0) -- Viền cam nổi bật
+	speedBox.TextSize = 15
 	speedBox.Font = Enum.Font.SourceSansBold
 	speedBox.ClipsDescendants = true
 	speedBox.Parent = screenGui
 
-	-- Bo tròn góc ô nhập
 	local uiCorner = Instance.new("UICorner")
 	uiCorner.CornerRadius = UDim.new(0, 8)
 	uiCorner.Parent = speedBox
 
-	-- Xử lý sự kiện khi nhập số xong (Bấm Enter hoặc nhấn ra ngoài màn hình)
+	-- Xử lý khi bạn nhập số xong
 	speedBox.FocusLost:Connect(function(enterPressed)
 		local text = speedBox.Text
 		local newSpeed = tonumber(text)
 		
 		if newSpeed and newSpeed >= 0 then
-			humanoid.WalkSpeed = newSpeed
+			forcedSpeed = newSpeed
+			humanoid.WalkSpeed = newSpeed -- Đổi ngay lập tức
 			speedBox.Text = tostring(newSpeed)
 		else
-			humanoid.WalkSpeed = 16 
+			forcedSpeed = nil -- Tắt tính năng khóa, trả về mặc định của game
 			speedBox.Text = ""
 		end
 	end)
 
-	-- Tự động xóa UI này khi nhân vật chết
+	-- Tự cập nhật lại tốc độ mỗi khi hồi sinh
+	if forcedSpeed then
+		humanoid.WalkSpeed = forcedSpeed
+	end
+
 	humanoid.Died:Connect(function()
 		screenGui:Destroy()
 	end)
 end
 
--- Chạy ngay lập tức cho nhân vật hiện tại
+-- Kích hoạt hệ thống
 if LocalPlayer.Character then
 	task.spawn(setupSpeedControl, LocalPlayer.Character)
 end
 
--- Tự động chạy lại mỗi khi bạn hồi sinh (CharacterAdded)
 LocalPlayer.CharacterAdded:Connect(function(newCharacter)
 	setupSpeedControl(newCharacter)
 end)
